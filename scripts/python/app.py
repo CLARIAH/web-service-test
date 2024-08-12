@@ -8,8 +8,8 @@ import os
 import re
 import string
 import sys
+import yaml
 
-from flask_pyoidc import OIDCAuthentication
 from flask_pyoidc.provider_configuration import ProviderConfiguration, ClientMetadata
 from flask_pyoidc.user_session import UserSession
 
@@ -27,6 +27,10 @@ def hello_world():
 
 @app.route('/test/<identifier>', methods=['POST'])
 def do_tests(identifier):
+    if not identifier in m_test_ids:
+        return f'{identifier} not found!'
+    else:
+        return f'trying {identifier} ...'
     #TODO: 1. check that identifier exists in yml
 #    logging.debug(f'test {identifier}')
     #TODO: 2. if 1  = True: run the test
@@ -41,6 +45,26 @@ def stderr(text,nl='\n'):
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+metric_ids = []
+m_test_ids = []
+with open('data/clarin_fip_metrics_v0.3.yaml', 'r') as f:
+    data = yaml.load(f, Loader=yaml.SafeLoader)
+    print(data.__class__)
+    metrics = data['metrics'] #['metric_tests']
+    for i in range(0,len(metrics)):
+        metric_ids.append(metrics[i]['metric_identifier'])
+        test_list = metrics[i]['metric_tests']
+        for j in range(0,len(test_list)):
+                m_test_ids.append(test_list[j]['metric_test_identifier'])
+
+    print(metrics.__class__)
+    print(len(metrics))
+    print(len(metrics[0]['metric_tests']))
+    print(metrics[0]['metric_tests'][0]['metric_test_identifier'])
+print(metric_ids)
+print(m_test_ids)
+#    tests = data['metrics']['metric_tests'] 
 
 
 if __name__ == "__main__":
