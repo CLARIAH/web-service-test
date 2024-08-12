@@ -25,14 +25,15 @@ def hello_world():
 
 
 
-@app.route('/test/<identifier>', methods=['POST'])
-def do_tests(identifier):
+@app.route('/test', methods=['POST'])
+def do_tests():
+    identifier = request.json.get('identifier')
+#    logging.debug(f'test {identifier}')
+    #TODO: DONE 1. check that identifier exists in yml
     if not identifier in m_test_ids:
         return f'{identifier} not found!'
     else:
         return f'trying {identifier} ...'
-    #TODO: 1. check that identifier exists in yml
-#    logging.debug(f'test {identifier}')
     #TODO: 2. if 1  = True: run the test
     #TODO: 3. return json result
     return 'Done'
