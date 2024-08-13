@@ -33,7 +33,7 @@ def do_tests():
     if not identifier in m_test_ids:
         return f'{identifier} not found!'
     else:
-        return f'trying {identifier} ...'
+        return f'trying {m_test_ids[identifier]} from {identifier} ...'
     #TODO: 2. if 1  = True: run the test
     #TODO: 3. return json result
     return 'Done'
@@ -48,24 +48,17 @@ def stderr(text,nl='\n'):
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 metric_ids = []
-m_test_ids = []
+m_test_ids = {}
 with open('data/clarin_fip_metrics_v0.3.yaml', 'r') as f:
     data = yaml.load(f, Loader=yaml.SafeLoader)
-    print(data.__class__)
     metrics = data['metrics'] #['metric_tests']
     for i in range(0,len(metrics)):
         metric_ids.append(metrics[i]['metric_identifier'])
         test_list = metrics[i]['metric_tests']
         for j in range(0,len(test_list)):
-                m_test_ids.append(test_list[j]['metric_test_identifier'])
+            m_test_id = test_list[j]['metric_test_identifier']
+            m_test_ids[m_test_id ] = test_list[j]['metric_test_requirements']
 
-    print(metrics.__class__)
-    print(len(metrics))
-    print(len(metrics[0]['metric_tests']))
-    print(metrics[0]['metric_tests'][0]['metric_test_identifier'])
-print(metric_ids)
-print(m_test_ids)
-#    tests = data['metrics']['metric_tests'] 
 
 
 if __name__ == "__main__":
