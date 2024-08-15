@@ -49,7 +49,7 @@ def do_tests(identifier):
 #    return make_response(render_template('succes.html',result=app),200)
 
 
-def test(identifier,requirements,proc,cmdi_record_path):
+def test(identifier,requirements,proc,cmdi_record_path,variables_dict={}):
     logging.debug(f'\t=> Test: {identifier}')
     logging.debug(f'\t=> Test: {requirements}')
     xpproc = proc.new_xquery_processor()
@@ -75,33 +75,32 @@ def test(identifier,requirements,proc,cmdi_record_path):
                 for k, v in variables_dict.items():
                     varproc.declare_variable(k)
                     varproc.set_parameter(k, proc.make_string_value(json.dumps(v), encoding="UTF-8"))
-                    try:
-                                    json_result = varproc.evaluate(var_val)
-                    except (RuntimeError, BaseException, PySaxonApiError) as err:
-                                    logger.error(f"\t\tError executing Xpath test: {var_val}: {err}")
-                                    exit(1)
-                    xpproc.set_parameter(var_name, json_result)
-                    var_declare_list.append(f"declare variable ${var_name} external")
-                var_declare_str = '; '.join(var_declare_list) + ";"
-                # Add declarations to the output Log:
-                if var_declare_str:
-                    log = log + ", " + var_declare_str
+                try:
+                    json_result = varproc.evaluate(var_val)
+                except (RuntimeError, BaseException, PySaxonApiError) as err:
+                    logging.error(f"\t\tError executing Xpath test: {var_val}: {err}")
+                    exit(1)
+                xpproc.set_parameter(var_name, json_result)
+                var_declare_list.append(f"declare variable ${var_name} external")
+            var_declare_str = '; '.join(var_declare_list) + ";"
+            # Add declarations to the output Log:
+            if var_declare_str: log = log + ", " + var_declare_str
 
-            logging.info(f"\t\t=> Setting Xquery content on procc: {var_declare_str} {xpath_tst}")
-            xpproc.set_query_content(f"{var_declare_str} {xpath_tst}")
+        logging.info(f"\t\t=> Setting Xquery content on procc: {var_declare_str} {xpath_tst}")
+        xpproc.set_query_content(f"{var_declare_str} {xpath_tst}")
 
-            # Run Xpath query
-            try:  # Looks like the parser might still print a java.io.IOException, that cannot be caught: FODC0002  I/O error reported by XML parser processing https://curation.clarin.eu/download/profile/clarin_eu_cr1_p_1650879720846. Caused by java.io.IOException: Server returned HTTP response code: 500 for URL: (...)
-                xslt_result = xpproc.run_query_to_value(encoding="UTF-8")
-            except (RuntimeError, BaseException, PySaxonApiError) as err:
-                logging.error(f"\t\tError executing Xpath test: {xpath_tst}: {err}")
-            if xslt_result:  # Do not include None results in the metric => TODO: take account for None results (i.e: indeterminate) in the end/total assessment score. For now just skip them.Beware:
-                test_result = get_test_result(xslt_result, Modality[metric_test['requirements[0]s'][0]['modality'].upper()], metric_test["metric_test_score"], metric_test["metric_test_identifier"],
+        # Run Xpath query
+        try:  # Looks like the parser might still print a java.io.IOException, that cannot be caught: FODC0002  I/O error reported by XML parser processing https://curation.clarin.eu/download/profile/clarin_eu_cr1_p_1650879720846. Caused by java.io.IOException: Server returned HTTP response code: 500 for URL: (...)
+            xslt_result = xpproc.run_query_to_value(encoding="UTF-8")
+        except (RuntimeError, BaseException, PySaxonApiError) as err:
+            logging.error(f"\t\tError executing Xpath test: {xpath_tst}: {err}")
+        if xslt_result:  # Do not include None results in the metric => TODO: take account for None results (i.e: indeterminate) in the end/total assessment score. For now just skip them.Beware:
+            test_result = get_test_result(xslt_result, Modality[metric_test['requirements[0]s'][0]['modality'].upper()], metric_test["metric_test_score"], metric_test["metric_test_identifier"],
                                                           identifier, requirements[0]["test"], log, identifier)
-                metric_tst_results_list.append(test_result)
-                logging.debug(f'\t\t=> Test Result: {test_result}')
-            else:
-                logging.warning(f"Test identifier '{identifier}' did NOT yield results!")
+            metric_tst_results_list.append(test_result)
+            logging.debug(f'\t\t=> Test Result: {test_result}')
+        else:
+            logging.warning(f"Test identifier '{identifier}' did NOT yield results!")
 
 
     return xslt_result
