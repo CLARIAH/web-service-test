@@ -8,16 +8,21 @@ import os
 import re
 import string
 import sys
+import tempfile
 import yaml
 from saxonche import PySaxonProcessor, PyXdmValue, PySaxonApiError
-
+from werkzeug.utils import secure_filename
+from typing import List
 from flask_pyoidc.provider_configuration import ProviderConfiguration, ClientMetadata
 from flask_pyoidc.user_session import UserSession
+from pyfat.fip.testresult import TestResult, MetricResult, Modality
 
 app = Flask(__name__)
+upload_folder = tempfile.gettempdir()
 app.config.update({
     'OIDC_REDIRECT_URI' : os.environ.get('APP_DOMAIN', 'http://localhost') + '/test',
     'PERMANENT_SESSION_LIFETIME': datetime.timedelta(days=7).total_seconds(),
+    'UPLOAD_FOLDER': upload_folder,
                    'DEBUG': True})
 
 @app.route("/hello")
@@ -36,8 +41,13 @@ def do_tests(identifier):
     else:
         if 'cmdi' not in request.files:
             return f'cmdi file not found!'
-        cmdi_record_path = request.files['cmdi'].filename
+        file = request.files['cmdi']
+        filename = secure_filename(file.filename)
+        cmdi_record_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(cmdi_record_path)
+        stderr(tempfile.gettempdir())
         stderr(f'cmdi_record_path: {cmdi_record_path}')
+        stderr(app.config['UPLOAD_FOLDER'])
         stderr(cmdi_record_path.__class__)
         #logging.debug(m_test_ids[identifier])
         with PySaxonProcessor(license=False) as proc:
@@ -53,6 +63,10 @@ def test(identifier,requirements,proc,cmdi_record_path,variables_dict={}):
     logging.debug(f'\t=> Test: {identifier}')
     logging.debug(f'\t=> Test: {requirements}')
     xpproc = proc.new_xquery_processor()
+    for k, v in namespaces.items():
+        xpproc.declare_namespace(k, v)
+        stderr(f'{k}: {v}') 
+    xpproc.set_context(file_name=str(cmdi_record_path))
     if requirements[0]["test"].startswith("xpath:"):  # In Xpath handler... TODO: implement logic for different handlers here (i.e: xpath, Python, etc. Factory)
         xslt_result = None  # reset results...
         log = f'Test modality = {requirements[0]["modality"]}'
@@ -104,7 +118,26 @@ def test(identifier,requirements,proc,cmdi_record_path,variables_dict={}):
 
 
     return xslt_result
-    
+ 
+
+def get_test_result(result_list: List[PyXdmValue], testmodality: Modality, max_tst_score: float, test_id: str, testname: str, testvalue: str, log: str, metricid: str) -> TestResult:
+    if not result_list:
+        return TestResult(False, 0, test_id, testname, testvalue, log, metricid, datetime.now())  # Fail with 0 score
+
+    if all(isinstance(item, PyXdmValue) and item.string_value in ["true", "false"] for item in result_list):
+        if testmodality is Modality.ANY:
+            success = any(res.boolean_value for res in result_list)
+            score = max_tst_score if success else 0
+        elif testmodality is Modality.ALL:
+            success = all(res.boolean_value for res in result_list)
+            score = max_tst_score if success else 0
+        else:  # TODO: Do we allow for a test to return a double value? This probably is a measurement or a benchmark result... How to interpret this? OSTrails test output: Pass, Fail or indeterminate.
+            item = result_list[0]
+            success = 0 <= item.double_value <= 1
+            score = round(item.double_value * max_tst_score, 1) if success else 0
+    return TestResult(success, score, test_id, testname, testvalue, log, metricid, datetime.now())
+
+
 
 
 def stderr(text,nl='\n'):
@@ -115,15 +148,18 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 
 metric_ids = []
 m_test_ids = {}
+namespaces = {}
 with open('data/clarin_fip_metrics_v0.3.yaml', 'r') as f:
     data = yaml.load(f, Loader=yaml.SafeLoader)
     metrics = data['metrics'] #['metric_tests']
     for i in range(0,len(metrics)):
-        metric_ids.append(metrics[i]['metric_identifier'])
+        metric_id = metrics[i]['metric_identifier'].split('/')[-1]
+        metric_ids.append(metric_id)
         test_list = metrics[i]['metric_tests']
         for j in range(0,len(test_list)):
             m_test_id = test_list[j]['metric_test_identifier']
             m_test_ids[m_test_id ] = test_list[j]['metric_test_requirements']
+    namespaces = data['config']['metric_namespaces']
 
 
 
