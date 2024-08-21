@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import datetime
+from datetime import datetime,timedelta
 import flask
 from flask import Flask, Response, render_template, request, flash, redirect, url_for, make_response, jsonify
 import json
@@ -15,13 +15,13 @@ from werkzeug.utils import secure_filename
 from typing import List
 from flask_pyoidc.provider_configuration import ProviderConfiguration, ClientMetadata
 from flask_pyoidc.user_session import UserSession
-from pyfat.fip.testresult import TestResult, MetricResult, Modality
+from testresult import TestResult, MetricResult, Modality
 
 app = Flask(__name__)
 upload_folder = tempfile.gettempdir()
 app.config.update({
     'OIDC_REDIRECT_URI' : os.environ.get('APP_DOMAIN', 'http://localhost') + '/test',
-    'PERMANENT_SESSION_LIFETIME': datetime.timedelta(days=7).total_seconds(),
+    'PERMANENT_SESSION_LIFETIME': timedelta(days=7).total_seconds(),
     'UPLOAD_FOLDER': upload_folder,
                    'DEBUG': True})
 
@@ -51,15 +51,16 @@ def do_tests(identifier):
         stderr(cmdi_record_path.__class__)
         #logging.debug(m_test_ids[identifier])
         with PySaxonProcessor(license=False) as proc:
-            test(identifier,m_test_ids[identifier],proc,cmdi_record_path)
-            return f'trying {m_test_ids[identifier]} from {identifier} ...'
+            result = test(identifier,m_test_ids[identifier],proc,cmdi_record_path)
+            return jsonify(result) #f'trying {m_test_ids[identifier]} from {identifier} ...'
     #TODO: 2. if 1  = True: run the test
     #TODO: 3. return json result
     return 'Done'
 #    return make_response(render_template('succes.html',result=app),200)
 
 
-def test(identifier,requirements,proc,cmdi_record_path,variables_dict={}):
+def test(identifier,metric_test,proc,cmdi_record_path,variables_dict={}):
+    requirements = metric_test['metric_test_requirements']
     logging.debug(f'\t=> Test: {identifier}')
     logging.debug(f'\t=> Test: {requirements}')
     xpproc = proc.new_xquery_processor()
@@ -109,15 +110,17 @@ def test(identifier,requirements,proc,cmdi_record_path,variables_dict={}):
         except (RuntimeError, BaseException, PySaxonApiError) as err:
             logging.error(f"\t\tError executing Xpath test: {xpath_tst}: {err}")
         if xslt_result:  # Do not include None results in the metric => TODO: take account for None results (i.e: indeterminate) in the end/total assessment score. For now just skip them.Beware:
-            test_result = get_test_result(xslt_result, Modality[metric_test['requirements[0]s'][0]['modality'].upper()], metric_test["metric_test_score"], metric_test["metric_test_identifier"],
+            test_result = get_test_result(xslt_result, Modality[requirements[0]['modality'].upper()], metric_test["metric_test_score"], metric_test["metric_test_identifier"],
                                                           identifier, requirements[0]["test"], log, identifier)
-            metric_tst_results_list.append(test_result)
             logging.debug(f'\t\t=> Test Result: {test_result}')
         else:
             logging.warning(f"Test identifier '{identifier}' did NOT yield results!")
 
+#    get_metric_result(metric_tst_results_list, Modality[metric["modality"].upper()], metric["max_score"], metric["metric_identifier"], metric["metric_name"], metric["metric_description"])
+    
+#    return MetricResult(success, metric["max_score"], identifier, metric["metric_name"], metric["metric_description"], test_ids, metric["max_score"], modality, tst_results, 1 if success else min(score, max_score) / max_score)
 
-    return xslt_result
+    return test_result
  
 
 def get_test_result(result_list: List[PyXdmValue], testmodality: Modality, max_tst_score: float, test_id: str, testname: str, testvalue: str, log: str, metricid: str) -> TestResult:
@@ -158,7 +161,7 @@ with open('data/clarin_fip_metrics_v0.3.yaml', 'r') as f:
         test_list = metrics[i]['metric_tests']
         for j in range(0,len(test_list)):
             m_test_id = test_list[j]['metric_test_identifier']
-            m_test_ids[m_test_id ] = test_list[j]['metric_test_requirements']
+            m_test_ids[m_test_id ] = test_list[j]
     namespaces = data['config']['metric_namespaces']
 
 
